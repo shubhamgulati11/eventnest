@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation"
 import { Heart, Phone, ArrowRight, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,9 @@ import { Field, FieldLabel, FieldError, FieldGroup } from "@/components/ui/field
 import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from "@/components/ui/input-otp"
 import { Spinner } from "@/components/ui/spinner"
 import { useAuth } from "@/lib/auth-context"
-
+import {  RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 type Step = "phone" | "otp" | "name"
 
 export default function LoginPage() {
@@ -23,7 +25,6 @@ export default function LoginPage() {
   const [name, setName] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-
   const formatPhoneNumber = (value: string) => {
     const numbers = value.replace(/\D/g, "")
     if (numbers.length <= 3) return numbers
@@ -37,19 +38,67 @@ export default function LoginPage() {
     setError("")
   }
 
+//   const handleSendOTP = async () => {
+//     const digits = phoneNumber.replace(/\D/g, "")
+//     if (digits.length !== 10) {
+//       setError("Please enter a valid 10-digit phone number")
+//       return
+//     }
+//
+//     setIsLoading(true)
+//     // Simulate sending OTP
+//     await new Promise(resolve => setTimeout(resolve, 1500))
+//     setIsLoading(false)
+//     setStep("otp")
+//   }
   const handleSendOTP = async () => {
-    const digits = phoneNumber.replace(/\D/g, "")
+    const digits = phoneNumber.replace(/\D/g, "");
+
     if (digits.length !== 10) {
-      setError("Please enter a valid 10-digit phone number")
-      return
+    setError("Please enter a valid 10-digit phone number");
+    return;
     }
-    
-    setIsLoading(true)
-    // Simulate sending OTP
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    setIsLoading(false)
-    setStep("otp")
-  }
+
+    setIsLoading(true);
+
+    try {
+        const appVerifier = window.recaptchaVerifier;
+
+        const phone = `+91${digits}`;
+
+        const confirmationResult = await signInWithPhoneNumber(
+        auth,
+        phone,
+        appVerifier
+        );
+
+    window.confirmationResult = confirmationResult;
+
+    setStep("otp"); // move to OTP screen
+   } catch (err) {
+    console.error(err);
+    setError("Failed to send OTP");
+   }
+
+    setIsLoading(false);
+ };
+  const handleGoogleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+
+      const result = await signInWithPopup(auth, provider);
+
+      const user = result.user;
+
+      console.log("User:", user);
+
+      // redirect after login
+      router.push("/");
+    } catch (error) {
+      console.error(error);
+      setError("Google login failed");
+    }
+  };
 
   const handleVerifyOTP = async () => {
     if (otp.length !== 6) {
@@ -72,6 +121,15 @@ export default function LoginPage() {
     login(phoneNumber, name || undefined)
     router.push("/")
   }
+  useEffect(() => {
+      if (!window.recaptchaVerifier) {
+        window.recaptchaVerifier = new RecaptchaVerifier(
+            auth,
+          "recaptcha-container",
+          { size: "invisible" }
+        );
+      }
+    }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -127,7 +185,8 @@ export default function LoginPage() {
                     {error && <FieldError>{error}</FieldError>}
                   </Field>
                   <Button 
-                    onClick={handleSendOTP} 
+                    onClick={handleSendOTP}
+//                     onClick={handleGoogleLogin}
                     className="w-full"
                     disabled={isLoading}
                   >
@@ -263,6 +322,7 @@ export default function LoginPage() {
             </>
           )}
         </Card>
+        <div id="recaptcha-container"></div>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
           By continuing, you agree to our Terms of Service and Privacy Policy
